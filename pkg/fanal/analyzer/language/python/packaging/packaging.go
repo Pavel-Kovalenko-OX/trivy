@@ -1,6 +1,7 @@
 package packaging
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -27,13 +28,14 @@ func init() {
 	analyzer.RegisterPostAnalyzer(analyzer.TypePythonPkg, newPackagingAnalyzer)
 }
 
-const version = 2
+const version = 3
 
 func newPackagingAnalyzer(opt analyzer.AnalyzerOptions) (analyzer.PostAnalyzer, error) {
 	return &packagingAnalyzer{
 		logger:                           log.WithPrefix("python"),
 		pkgParser:                        packaging.NewParser(),
 		licenseClassifierConfidenceLevel: opt.LicenseScannerOption.ClassifierConfidenceLevel,
+		listAllLangPkgs:                  opt.ListAllLangPkgs,
 	}, nil
 }
 
@@ -57,6 +59,7 @@ type packagingAnalyzer struct {
 	logger                           *log.Logger
 	pkgParser                        language.Parser
 	licenseClassifierConfidenceLevel float64
+	listAllLangPkgs                  bool
 }
 
 // PostAnalyze analyzes egg and wheel files.
@@ -95,6 +98,20 @@ func (a packagingAnalyzer) PostAnalyze(ctx context.Context, input analyzer.PostA
 
 		if err = fillAdditionalData(opener, app, a.licenseClassifierConfidenceLevel); err != nil {
 			a.logger.Warn("Unable to collect additional info", log.Err(err))
+		}
+
+		// Read RECORD file to get installed files for .dist-info packages (only if flag is enabled)
+		if a.listAllLangPkgs && strings.Contains(filePath, ".dist-info/METADATA") {
+			// RECORD paths are relative to the parent of .dist-info directory (site-packages)
+			// e.g., if METADATA is at "app/venv/lib/python3.10/site-packages/pkg-1.0.dist-info/METADATA"
+			// then RECORD paths should be prefixed with "app/venv/lib/python3.10/site-packages/"
+			distInfoDir := path.Dir(filePath)        // app/venv/.../pkg-1.0.dist-info
+			sitePackagesDir := path.Dir(distInfoDir) // app/venv/.../site-packages
+			if installedFiles, err := a.parseRecordFile(input.FS, distInfoDir, sitePackagesDir); err != nil {
+				a.logger.Debug("Unable to parse RECORD file", log.FilePath(filePath), log.Err(err))
+			} else if len(installedFiles) > 0 && len(app.Packages) > 0 {
+				app.Packages[0].InstalledFiles = installedFiles
+			}
 		}
 
 		apps = append(apps, *app)
@@ -160,6 +177,45 @@ func classifyLicenses(opener fileOpener, licPath string, licenseClassifierConfid
 
 func (a packagingAnalyzer) parse(ctx context.Context, filePath string, r xio.ReadSeekerAt, checksum bool) (*types.Application, error) {
 	return language.ParsePackage(ctx, types.PythonPkg, filePath, r, a.pkgParser, checksum)
+}
+
+// parseRecordFile reads the RECORD file from a .dist-info directory and extracts file paths.
+// The RECORD file is a CSV with format: path,hash,size
+// Paths in RECORD are relative to sitePackagesDir (parent of distInfoDir).
+// We convert them to absolute paths to match the format of OS packages InstalledFiles.
+func (a packagingAnalyzer) parseRecordFile(fsys fs.FS, distInfoDir, sitePackagesDir string) ([]string, error) {
+	recordPath := path.Join(distInfoDir, "RECORD")
+	f, err := fsys.Open(recordPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		// RECORD file is optional
+		return nil, nil
+	} else if err != nil {
+		return nil, xerrors.Errorf("failed to open RECORD file: %w", err)
+	}
+	defer f.Close()
+
+	var installedFiles []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// RECORD format is CSV: path,hash,size
+		// We only need the first field (path)
+		if idx := strings.Index(line, ","); idx > 0 {
+			relativePath := line[:idx]
+			if relativePath != "" {
+				// Convert relative path to absolute Unix path by adding leading slash
+				// and joining with site-packages directory
+				absolutePath := "/" + path.Join(sitePackagesDir, relativePath)
+				installedFiles = append(installedFiles, absolutePath)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, xerrors.Errorf("failed to read RECORD file: %w", err)
+	}
+
+	return installedFiles, nil
 }
 
 func (a packagingAnalyzer) Required(filePath string, _ os.FileInfo) bool {

@@ -64,6 +64,13 @@ var (
 		Usage:         "output all packages in the JSON report regardless of vulnerability",
 		TelemetrySafe: true,
 	}
+	ListAllLangPkgsFlag = Flag[bool]{
+		Name:          "list-all-lang-pkgs",
+		ConfigName:    "list-all-lang-pkgs",
+		Default:       false,
+		Usage:         "output installed files for language-specific packages (e.g., Python, Node.js)",
+		TelemetrySafe: true,
+	}
 	IgnoreFileFlag = Flag[string]{
 		Name:       "ignorefile",
 		ConfigName: "ignorefile",
@@ -135,6 +142,7 @@ type ReportFlagGroup struct {
 	Template        *Flag[string]
 	DependencyTree  *Flag[bool]
 	ListAllPkgs     *Flag[bool]
+	ListAllLangPkgs *Flag[bool]
 	IgnoreFile      *Flag[string]
 	IgnorePolicy    *Flag[string]
 	ExitCode        *Flag[int]
@@ -152,6 +160,7 @@ type ReportOptions struct {
 	ReportFormat     string
 	Template         string
 	DependencyTree   bool
+	ListAllLangPkgs  bool
 	ListAllPkgs      bool
 	IgnoreFile       string
 	ExitCode         int
@@ -171,6 +180,7 @@ func NewReportFlagGroup() *ReportFlagGroup {
 		ReportFormat:    ReportFormatFlag.Clone(),
 		Template:        TemplateFlag.Clone(),
 		DependencyTree:  DependencyTreeFlag.Clone(),
+		ListAllLangPkgs: ListAllLangPkgsFlag.Clone(),
 		ListAllPkgs:     ListAllPkgsFlag.Clone(),
 		IgnoreFile:      IgnoreFileFlag.Clone(),
 		IgnorePolicy:    IgnorePolicyFlag.Clone(),
@@ -196,6 +206,7 @@ func (f *ReportFlagGroup) Flags() []Flagger {
 		f.Template,
 		f.DependencyTree,
 		f.ListAllPkgs,
+		f.ListAllLangPkgs,
 		f.IgnoreFile,
 		f.IgnorePolicy,
 		f.ExitCode,
@@ -214,6 +225,7 @@ func (f *ReportFlagGroup) ToOptions(opts *Options) error {
 	template := f.Template.Value()
 	dependencyTree := f.DependencyTree.Value()
 	listAllPkgs := f.ListAllPkgs.Value()
+	listAllLangPkgs := f.ListAllLangPkgs.Value()
 	tableModes := f.TableMode.Value()
 
 	if template != "" {
@@ -273,6 +285,7 @@ func (f *ReportFlagGroup) ToOptions(opts *Options) error {
 		Template:         template,
 		DependencyTree:   dependencyTree,
 		ListAllPkgs:      listAllPkgs,
+		ListAllLangPkgs:  listAllLangPkgs,
 		IgnoreFile:       f.IgnoreFile.Value(),
 		ExitCode:         f.ExitCode.Value(),
 		ExitOnEOL:        f.ExitOnEOL.Value(),

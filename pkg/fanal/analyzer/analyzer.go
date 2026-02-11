@@ -49,6 +49,7 @@ type AnalyzerOptions struct {
 	MisconfScannerOption misconf.ScannerOption
 	SecretScannerOption  SecretScannerOption
 	LicenseScannerOption LicenseScannerOption
+	ListAllLangPkgs      bool // Enable InstalledFiles for language packages
 }
 
 type SecretScannerOption struct {

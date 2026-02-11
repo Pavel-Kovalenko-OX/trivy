@@ -677,6 +677,9 @@ func (r *runner) initScannerConfig(ctx context.Context, opts flag.Options) (Scan
 				ClassifierConfidenceLevel: opts.LicenseConfidenceLevel,
 			},
 
+			// For language package scanning
+			ListAllLangPkgs: opts.ListAllLangPkgs,
+
 			// For file walking
 			WalkerOption: walker.Option{
 				SkipFiles: opts.SkipFiles,

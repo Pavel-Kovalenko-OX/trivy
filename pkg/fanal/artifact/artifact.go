@@ -48,6 +48,7 @@ type Option struct {
 	MisconfScannerOption misconf.ScannerOption
 	SecretScannerOption  analyzer.SecretScannerOption
 	LicenseScannerOption analyzer.LicenseScannerOption
+	ListAllLangPkgs      bool
 
 	WalkerOption walker.Option
 }
@@ -62,6 +63,7 @@ func (o *Option) AnalyzerOptions() analyzer.AnalyzerOptions {
 		MisconfScannerOption: o.MisconfScannerOption,
 		SecretScannerOption:  o.SecretScannerOption,
 		LicenseScannerOption: o.LicenseScannerOption,
+		ListAllLangPkgs:      o.ListAllLangPkgs,
 	}
 }
 

@@ -33,6 +33,7 @@ func CalcKey(id string, artifactVersion int, analyzerVersions analyzer.Versions,
 		SkipDirs          []string
 		FilePatterns      []string                `json:",omitempty"`
 		DetectionPriority types.DetectionPriority `json:",omitempty"`
+		ListAllLangPkgs   bool                    `json:",omitempty"`
 	}{
 		id,
 		artifactVersion,
@@ -42,6 +43,7 @@ func CalcKey(id string, artifactVersion int, analyzerVersions analyzer.Versions,
 		artifactOpt.WalkerOption.SkipDirs,
 		artifactOpt.FilePatterns,
 		artifactOpt.DetectionPriority,
+		artifactOpt.ListAllLangPkgs,
 	}
 
 	if err := json.NewEncoder(h).Encode(keyBase); err != nil {
