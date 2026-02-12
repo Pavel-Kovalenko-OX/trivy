@@ -40,14 +40,16 @@ type TargetLib struct {
 }
 
 type Parser struct {
-	logger *log.Logger
-	once   sync.Once
+	logger          *log.Logger
+	once            sync.Once
+	listAllLangPkgs bool
 }
 
-func NewParser() *Parser {
+func NewParser(listAllLangPkgs bool) *Parser {
 	return &Parser{
-		logger: log.WithPrefix("dotnet"),
-		once:   sync.Once{},
+		logger:          log.WithPrefix("dotnet"),
+		once:            sync.Once{},
+		listAllLangPkgs: listAllLangPkgs,
 	}
 }
 
@@ -121,7 +123,7 @@ func (p *Parser) Parse(_ context.Context, r xio.ReadSeekerAt) ([]ftypes.Package,
 
 	directDeps := lo.MapToSlice(targetLibs[projectNameVer].Dependencies, packageID)
 
-	// Second pass: build dependency graph + fill Relationships from targets section
+	// Second pass: extract installed files (if enabled) and build dependency graph + fill Relationships from targets section
 	var deps ftypes.Dependencies
 	for pkgID, pkg := range pkgs {
 		// Fill relationship field for package
@@ -130,8 +132,17 @@ func (p *Parser) Parse(_ context.Context, r xio.ReadSeekerAt) ([]ftypes.Package,
 		// Root package Relationship is already set
 		if len(directDeps) > 0 && pkg.Relationship != ftypes.RelationshipRoot {
 			pkg.Relationship = lo.Ternary(slices.Contains(directDeps, pkgID), ftypes.RelationshipDirect, ftypes.RelationshipIndirect)
-			pkgs[pkgID] = pkg
 		}
+
+		// Extract installed files from runtime and runtimeTargets sections
+		if p.listAllLangPkgs {
+			if targetLib, ok := targetLibs[pkgID]; ok {
+				pkg.InstalledFiles = p.extractInstalledFiles(targetLib)
+			}
+		}
+
+		// Store the updated package back into the map
+		pkgs[pkgID] = pkg
 
 		// Build dependency graph
 		dependencies, ok := targetLibs[pkgID]
@@ -176,6 +187,37 @@ func (p *Parser) isRuntimeLibrary(targetLibs map[string]TargetLib, library strin
 	}
 	// Check that `runtime`, `runtimeTarget` and `native` sections are not empty
 	return !lo.IsEmpty(lib.Runtime) || !lo.IsEmpty(lib.RuntimeTargets) || !lo.IsEmpty(lib.Native)
+}
+
+// extractInstalledFiles extracts file paths from runtime and runtimeTargets sections.
+// Runtime section contains DLL files, runtimeTargets contains platform-specific native assets.
+func (p *Parser) extractInstalledFiles(lib TargetLib) []string {
+	var files []string
+
+	// Extract from runtime section (DLL files)
+	// The runtime field is a map[string]any where keys are file paths
+	if runtime, ok := lib.Runtime.(map[string]any); ok {
+		for filePath := range runtime {
+			if filePath != "" {
+				// Add leading slash to make it an absolute path
+				files = append(files, "/"+filePath)
+			}
+		}
+	}
+
+	// Extract from runtimeTargets section (native assets)
+	// The runtimeTargets field is a map[string]any where keys are file paths
+	if runtimeTargets, ok := lib.RuntimeTargets.(map[string]any); ok {
+		for filePath := range runtimeTargets {
+			if filePath != "" {
+				// Add leading slash to make it an absolute path
+				files = append(files, "/"+filePath)
+			}
+		}
+	}
+
+	sort.Strings(files)
+	return files
 }
 
 func packageID(name, version string) string {

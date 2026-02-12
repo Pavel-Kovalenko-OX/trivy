@@ -18,14 +18,24 @@ func init() {
 }
 
 const (
-	version       = 1
+	version       = 2
 	depsExtension = ".deps.json"
 )
 
-type depsLibraryAnalyzer struct{}
+// Ensure depsLibraryAnalyzer implements analyzer.Initializer
+var _ analyzer.Initializer = (*depsLibraryAnalyzer)(nil)
+
+type depsLibraryAnalyzer struct {
+	listAllLangPkgs bool
+}
+
+func (a *depsLibraryAnalyzer) Init(opt analyzer.AnalyzerOptions) error {
+	a.listAllLangPkgs = opt.ListAllLangPkgs
+	return nil
+}
 
 func (a depsLibraryAnalyzer) Analyze(ctx context.Context, input analyzer.AnalysisInput) (*analyzer.AnalysisResult, error) {
-	parser := core.NewParser()
+	parser := core.NewParser(a.listAllLangPkgs)
 	res, err := language.Analyze(ctx, types.DotNetCore, input.FilePath, input.Content, parser)
 	if err != nil {
 		return nil, xerrors.Errorf(".Net Core dependencies analysis error: %w", err)

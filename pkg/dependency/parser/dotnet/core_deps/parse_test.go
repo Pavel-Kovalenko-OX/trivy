@@ -162,7 +162,7 @@ func TestParse(t *testing.T) {
 			f, err := os.Open(tt.file)
 			require.NoError(t, err)
 
-			got, gotDeps, err := NewParser().Parse(t.Context(), f)
+			got, gotDeps, err := NewParser(false).Parse(t.Context(), f)
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
@@ -172,5 +172,20 @@ func TestParse(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 			assert.Equal(t, tt.wantDeps, gotDeps)
 		})
+	}
+}
+func TestParseWithInstalledFiles(t *testing.T) {
+	f, err := os.Open("testdata/happy.deps.json")
+	require.NoError(t, err)
+
+	got, _, err := NewParser(true).Parse(t.Context(), f)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	// Check that the library has InstalledFiles
+	for _, pkg := range got {
+		if pkg.Name == "Newtonsoft.Json" {
+			assert.Equal(t, []string{"/lib/netstandard2.0/Newtonsoft.Json.dll"}, pkg.InstalledFiles)
+		}
 	}
 }
