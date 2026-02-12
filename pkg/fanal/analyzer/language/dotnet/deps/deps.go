@@ -36,6 +36,7 @@ func (a *depsLibraryAnalyzer) Init(opt analyzer.AnalyzerOptions) error {
 
 func (a depsLibraryAnalyzer) Analyze(ctx context.Context, input analyzer.AnalysisInput) (*analyzer.AnalysisResult, error) {
 	parser := core.NewParser(a.listAllLangPkgs)
+	parser.SetFilePath(input.FilePath)
 	res, err := language.Analyze(ctx, types.DotNetCore, input.FilePath, input.Content, parser)
 	if err != nil {
 		return nil, xerrors.Errorf(".Net Core dependencies analysis error: %w", err)

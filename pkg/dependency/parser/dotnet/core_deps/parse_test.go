@@ -162,7 +162,9 @@ func TestParse(t *testing.T) {
 			f, err := os.Open(tt.file)
 			require.NoError(t, err)
 
-			got, gotDeps, err := NewParser(false).Parse(t.Context(), f)
+			parser := NewParser(false)
+			parser.SetFilePath(tt.file)
+			got, gotDeps, err := parser.Parse(t.Context(), f)
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
@@ -175,17 +177,21 @@ func TestParse(t *testing.T) {
 	}
 }
 func TestParseWithInstalledFiles(t *testing.T) {
-	f, err := os.Open("testdata/happy.deps.json")
+	testFile := "testdata/happy.deps.json"
+	f, err := os.Open(testFile)
 	require.NoError(t, err)
 
-	got, _, err := NewParser(true).Parse(t.Context(), f)
+	parser := NewParser(true)
+	parser.SetFilePath(testFile)
+	got, _, err := parser.Parse(t.Context(), f)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
-	// Check that the library has InstalledFiles
+	// Check that the library has InstalledFiles with absolute paths
+	// Runtime files should be flattened (basename only), in the testdata directory
 	for _, pkg := range got {
 		if pkg.Name == "Newtonsoft.Json" {
-			assert.Equal(t, []string{"/lib/netstandard2.0/Newtonsoft.Json.dll"}, pkg.InstalledFiles)
+			assert.Equal(t, []string{"/testdata/Newtonsoft.Json.dll"}, pkg.InstalledFiles)
 		}
 	}
 }

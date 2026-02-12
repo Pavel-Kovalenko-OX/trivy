@@ -2,6 +2,7 @@ package core_deps
 
 import (
 	"context"
+	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -43,6 +44,7 @@ type Parser struct {
 	logger          *log.Logger
 	once            sync.Once
 	listAllLangPkgs bool
+	filePath        string // Path to the deps.json file for computing absolute paths
 }
 
 func NewParser(listAllLangPkgs bool) *Parser {
@@ -51,6 +53,11 @@ func NewParser(listAllLangPkgs bool) *Parser {
 		once:            sync.Once{},
 		listAllLangPkgs: listAllLangPkgs,
 	}
+}
+
+// SetFilePath sets the path to the deps.json file for computing absolute paths
+func (p *Parser) SetFilePath(filePath string) {
+	p.filePath = filePath
 }
 
 func (p *Parser) Parse(_ context.Context, r xio.ReadSeekerAt) ([]ftypes.Package, []ftypes.Dependency, error) {
@@ -137,7 +144,7 @@ func (p *Parser) Parse(_ context.Context, r xio.ReadSeekerAt) ([]ftypes.Package,
 		// Extract installed files from runtime and runtimeTargets sections
 		if p.listAllLangPkgs {
 			if targetLib, ok := targetLibs[pkgID]; ok {
-				pkg.InstalledFiles = p.extractInstalledFiles(targetLib)
+				pkg.InstalledFiles = p.extractInstalledFiles(targetLib, p.filePath)
 			}
 		}
 
@@ -189,29 +196,39 @@ func (p *Parser) isRuntimeLibrary(targetLibs map[string]TargetLib, library strin
 	return !lo.IsEmpty(lib.Runtime) || !lo.IsEmpty(lib.RuntimeTargets) || !lo.IsEmpty(lib.Native)
 }
 
-// extractInstalledFiles extracts file paths from runtime and runtimeTargets sections.
-// Runtime section contains DLL files, runtimeTargets contains platform-specific native assets.
-func (p *Parser) extractInstalledFiles(lib TargetLib) []string {
+// extractInstalledFiles extracts file paths from runtime and runtimeTargets sections and converts them to absolute paths.
+// Runtime section contains DLL files that are "flattened" (only basename is used, located next to deps.json).
+// RuntimeTargets section contains platform-specific native assets that preserve directory structure.
+func (p *Parser) extractInstalledFiles(lib TargetLib, depsFilePath string) []string {
 	var files []string
 
+	// Get the directory containing the deps.json file
+	// Note: filePath is always Unix-style (/) in the analyzer, even on Windows
+	depsDir := path.Dir(depsFilePath)
+
 	// Extract from runtime section (DLL files)
-	// The runtime field is a map[string]any where keys are file paths
+	// Runtime files are "flattened" - only the basename is used
+	// e.g., "lib/net8.0/Microsoft.Data.Sqlite.dll" becomes "/path/to/Microsoft.Data.Sqlite.dll"
 	if runtime, ok := lib.Runtime.(map[string]any); ok {
 		for filePath := range runtime {
 			if filePath != "" {
-				// Add leading slash to make it an absolute path
-				files = append(files, "/"+filePath)
+				// Use only the basename for runtime files (they're flattened)
+				basename := path.Base(filePath)
+				absolutePath := "/" + path.Join(depsDir, basename)
+				files = append(files, absolutePath)
 			}
 		}
 	}
 
 	// Extract from runtimeTargets section (native assets)
-	// The runtimeTargets field is a map[string]any where keys are file paths
+	// RuntimeTargets preserve the relative path structure
+	// e.g., "runtimes/linux-x64/native/libe_sqlite3.so" becomes "/path/to/runtimes/linux-x64/native/libe_sqlite3.so"
 	if runtimeTargets, ok := lib.RuntimeTargets.(map[string]any); ok {
 		for filePath := range runtimeTargets {
 			if filePath != "" {
-				// Add leading slash to make it an absolute path
-				files = append(files, "/"+filePath)
+				// Preserve the full relative path for runtimeTargets
+				absolutePath := "/" + path.Join(depsDir, filePath)
+				files = append(files, absolutePath)
 			}
 		}
 	}
