@@ -39,7 +39,7 @@ type composerAnalyzer struct {
 
 func newComposerAnalyzer(_ analyzer.AnalyzerOptions) (analyzer.PostAnalyzer, error) {
 	return &composerAnalyzer{
-		lockParser: composer.NewParser(),
+		lockParser: composer.NewParser(false),
 	}, nil
 }
 

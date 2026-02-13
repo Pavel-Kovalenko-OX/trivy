@@ -2,6 +2,7 @@ package composer
 
 import (
 	"context"
+	"path"
 	"sort"
 	"strings"
 
@@ -20,21 +21,30 @@ type LockFile struct {
 	Packages []packageInfo `json:"packages"`
 }
 type packageInfo struct {
-	Name    string            `json:"name"`
-	Version string            `json:"version"`
-	Require map[string]string `json:"require"`
-	License any               `json:"license"`
+	Name        string            `json:"name"`
+	Version     string            `json:"version"`
+	Require     map[string]string `json:"require"`
+	License     any               `json:"license"`
+	InstallPath string            `json:"install-path"` // Relative path to the package installation directory
 	xjson.Location
 }
 
 type Parser struct {
-	logger *log.Logger
+	logger          *log.Logger
+	listAllLangPkgs bool
+	filePath        string // Path to the installed.json file
 }
 
-func NewParser() *Parser {
+func NewParser(listAllLangPkgs bool) *Parser {
 	return &Parser{
-		logger: log.WithPrefix("composer"),
+		logger:          log.WithPrefix("composer"),
+		listAllLangPkgs: listAllLangPkgs,
 	}
+}
+
+// SetFilePath sets the path to the installed.json file for computing absolute paths
+func (p *Parser) SetFilePath(filePath string) {
+	p.filePath = filePath
 }
 
 func (p *Parser) Parse(_ context.Context, r xio.ReadSeekerAt) ([]ftypes.Package, []ftypes.Dependency, error) {
@@ -54,6 +64,12 @@ func (p *Parser) Parse(_ context.Context, r xio.ReadSeekerAt) ([]ftypes.Package,
 			Licenses:     licenses(lpkg.License),
 			Locations:    []ftypes.Location{ftypes.Location(lpkg.Location)},
 		}
+
+		// Extract install-path if listAllLangPkgs is enabled
+		if p.listAllLangPkgs && lpkg.InstallPath != "" {
+			pkg.InstalledFiles = []string{p.normalizeInstallPath(lpkg.InstallPath)}
+		}
+
 		pkgs[pkg.Name] = pkg
 
 		var dependsOn []string
@@ -93,6 +109,25 @@ func (p *Parser) Parse(_ context.Context, r xio.ReadSeekerAt) ([]ftypes.Package,
 	sort.Sort(deps)
 
 	return pkgSlice, deps, nil
+}
+
+// normalizeInstallPath converts relative install-path to absolute path.
+// install-path is relative to the installed.json file.
+// Example: "../pear/log" from "/app/vendor/composer/installed.json" becomes "/app/vendor/pear/log"
+func (p *Parser) normalizeInstallPath(installPath string) string {
+	if p.filePath == "" {
+		// If filePath is not set, return the install-path as-is with leading slash
+		return "/" + installPath
+	}
+
+	// Get the directory containing installed.json
+	installedDir := path.Dir(p.filePath)
+
+	// Join and clean the path to resolve ".." components
+	// path.Clean removes redundant separators and resolves ".." and "."
+	absolutePath := path.Clean("/" + path.Join(installedDir, installPath))
+
+	return absolutePath
 }
 
 // licenses returns slice of licenses from string, string with separators (`or`, `and`, etc.) or string array

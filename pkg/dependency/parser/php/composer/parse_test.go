@@ -163,11 +163,36 @@ func TestParse(t *testing.T) {
 			require.NoError(t, err)
 			defer f.Close()
 
-			gotPkgs, gotDeps, err := NewParser().Parse(t.Context(), f)
+			parser := NewParser(false)
+			parser.SetFilePath(tt.file)
+			gotPkgs, gotDeps, err := parser.Parse(t.Context(), f)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantPkgs, gotPkgs)
 			assert.Equal(t, tt.wantDeps, gotDeps)
 		})
+	}
+}
+func TestParseInstalledJsonWithInstalledFiles(t *testing.T) {
+	testFile := "../../../../../pkg/fanal/analyzer/language/php/composer/testdata/composer-vendor/happy/installed.json"
+	f, err := os.Open(testFile)
+	require.NoError(t, err)
+	defer f.Close()
+
+	parser := NewParser(true)
+	parser.SetFilePath(testFile)
+	gotPkgs, _, err := parser.Parse(t.Context(), f)
+	require.NoError(t, err)
+	require.Len(t, gotPkgs, 2)
+
+	// Check that packages have InstalledFiles with normalized paths
+	// installed.json is at "../../../../../pkg/fanal/analyzer/language/php/composer/testdata/composer-vendor/happy/installed.json"
+	// install-path "../pear/log" should normalize to "/pkg/fanal/analyzer/language/php/composer/testdata/composer-vendor/pear/log"
+	for _, pkg := range gotPkgs {
+		if pkg.Name == "pear/log" {
+			assert.Equal(t, []string{"/pkg/fanal/analyzer/language/php/composer/testdata/composer-vendor/pear/log"}, pkg.InstalledFiles)
+		} else if pkg.Name == "pear/pear_exception" {
+			assert.Equal(t, []string{"/pkg/fanal/analyzer/language/php/composer/testdata/composer-vendor/pear/pear_exception"}, pkg.InstalledFiles)
+		}
 	}
 }
